@@ -205,7 +205,7 @@ class DataPreprocessor:
 
         if parallel:
             # Use parallel processing
-            num_workers = min(cpu_count(), 4)  # Use fewer workers to avoid memory issues
+            num_workers = min(cpu_count(), 10)  # Use 10 workers for better balance
             print(f"Using {num_workers} parallel workers")
 
             station_data_list = []
