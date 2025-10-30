@@ -61,14 +61,11 @@ class FastPreprocessor:
         # Find data columns (exclude first 5 columns: DateTime, City, Station_name, Lon, Lat)
         data_cols = all_cols[5:]
 
+        # Remove DateTime_parsed from data columns (it's a temporary column)
+        if 'DateTime_parsed' in data_cols:
+            data_cols.remove('DateTime_parsed')
+
         print(f"Station {station_name}: {len(data_cols)} features")
-        print(f"  All columns: {all_cols}")
-        print(f"  Data columns: {data_cols}")
-        if len(data_cols) == 667:
-            print("  Found 667 features! Checking...")
-            for i, col in enumerate(data_cols):
-                print(f"    {i:3d}: {col}")
-            input("Press Enter to continue...")  # Pause to examine
 
         # Create a sparse representation: only store actual data
         station_data_sparse = []
