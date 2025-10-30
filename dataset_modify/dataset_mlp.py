@@ -60,21 +60,24 @@ class HazeData(data.Dataset):
         """Add time dimension - implement lazy loading version"""
         print(f"Creating time sequences with seq_len={seq_len}...")
 
-        def _add_t_lazy(arr_data, start_idx, end_idx, seq_len):
-            """Lazy time dimension creation - only create sequences when needed"""
-            time_steps = end_idx - start_idx
-            total_sequences = time_steps - seq_len + 1
+        # For time array, we need to create the actual sequences since they're just indices
+        time_steps = self.time_end_idx - self.time_start_idx
+        total_sequences = time_steps - seq_len + 1
 
-            # Just store the indices, don't create actual data yet
-            self._seq_len = seq_len
-            self._time_start_idx = start_idx
-            self._time_end_idx = end_idx
-            self._total_sequences = total_sequences
+        # Store sequence information for data
+        self._seq_len = seq_len
+        self._time_start_idx = self.time_start_idx
+        self._time_end_idx = self.time_end_idx
+        self._total_sequences = total_sequences
 
-        # Calculate time indices for the processed time range
-        total_time_steps = self.time_end_idx - self.time_start_idx
-        _add_t_lazy(None, self.time_start_idx, self.time_end_idx, seq_len)
+        # Create time array sequences (these are just timestamps, so memory is fine)
+        time_sequences = []
+        for i in range(total_sequences):
+            start = i
+            end = i + seq_len
+            time_sequences.append(self.time_arr[start:end])
 
+        self.time_arr = np.array(time_sequences)
         print(f"Time sequences created: {self._total_sequences} sequences")
 
     def _calc_mean_std(self):

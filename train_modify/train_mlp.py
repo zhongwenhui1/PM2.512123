@@ -67,16 +67,20 @@ print(f"Number of cities: {city_num}")
 print(f"Wind mean: {wind_mean}, Wind std: {wind_std}")
 print(f"PM2.5 mean: {pm25_mean:.4f}, PM2.5 std: {pm25_std:.4f}")
 
-# Test data format with a small sample
-print("Testing data format...")
-from torch.utils.data import DataLoader
-test_loader = DataLoader(train_data, batch_size=2, shuffle=False)
-sample_batch = next(iter(test_loader))
-pm25_batch, feature_batch, time_batch = sample_batch
-print(f"Batch PM2.5 shape: {pm25_batch.shape}")
-print(f"Batch feature shape: {feature_batch.shape}")
-print(f"Expected format: [batch_size={pm25_batch.shape[0]}, seq_len={pm25_batch.shape[1]}, city_num={pm25_batch.shape[2]}, features=1]")
-print("Data format test completed successfully!")
+# Test individual sample first
+print("Testing individual sample...")
+try:
+    sample_pm25, sample_feature, sample_time = train_data[0]
+    print(f"Sample PM2.5 shape: {sample_pm25.shape}")
+    print(f"Sample feature shape: {sample_feature.shape}")
+    print(f"Sample time shape: {sample_time.shape}")
+    print(f"Sample time type: {type(sample_time)}")
+    print("Individual sample test passed!")
+except Exception as e:
+    print(f"Error testing individual sample: {e}")
+    import traceback
+    traceback.print_exc()
+    exit(1)
 
 
 def get_metric(predict_epoch, label_epoch):
