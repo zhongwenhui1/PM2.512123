@@ -216,7 +216,7 @@ class DataPreprocessor:
 
 def main():
     # Configuration - update these paths
-    csv_folder = "/path/to/your/csv/folder"  # Update this path
+    csv_folder = "/root/autodl-tmp/合并数据_去PRMSL"  # Update this path
     output_folder = "./processed_data"
 
     print("Starting data preprocessing...")
