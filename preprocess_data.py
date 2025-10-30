@@ -203,7 +203,7 @@ class DataPreprocessor:
 
         if parallel:
             # Use parallel processing
-            num_workers = min(cpu_count(), 16)  # Cap at 16 workers to avoid overloading
+            num_workers = min(cpu_count(), 4)  # Use 4 workers to avoid resource issues
             print(f"Using {num_workers} parallel workers")
 
             station_data_list = []
@@ -334,7 +334,7 @@ def main():
     print("Starting data preprocessing...")
 
     preprocessor = DataPreprocessor(csv_folder, output_folder)
-    all_data, station_info = preprocessor.preprocess_all_data(parallel=True)  # Use parallel processing
+    all_data, station_info = preprocessor.preprocess_all_data(parallel=False)  # Use serial processing to avoid issues
 
     print("Data preprocessing completed!")
     print(f"Processed {len(station_info)} stations")
