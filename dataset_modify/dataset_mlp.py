@@ -150,7 +150,7 @@ class HazeData(data.Dataset):
     def _get_idx(self, t):
         """Get time index for hourly data"""
         t0 = self.data_start
-        return int((t.timestamp - t0.timestamp) / (60 * 60))
+        return int((t - t0).total_seconds() / (60 * 60))
 
     def _get_time(self, time_yaml):
         arrow_time = arrow.get(datetime(*time_yaml[0]), time_yaml[1])

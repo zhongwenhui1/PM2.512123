@@ -35,8 +35,12 @@ lr = train_config['lr']
 optimizer_type = train_config['optimizer']
 momentum = train_config.get('momentum', 0.9)
 
-# Load data
-graph = Graph()
+# Load data (MLP doesn't need graph structure)
+class SimpleGraph:
+    def __init__(self):
+        self.node_num = 206  # Fixed number of stations
+
+graph = SimpleGraph()
 train_data = HazeData(graph, hist_len, pred_len, dataset_num, flag='Train')
 val_data = HazeData(graph, hist_len, pred_len, dataset_num, flag='Val')
 test_data = HazeData(graph, hist_len, pred_len, dataset_num, flag='Test')
