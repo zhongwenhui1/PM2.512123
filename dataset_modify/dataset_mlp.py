@@ -91,7 +91,14 @@ class HazeData(data.Dataset):
         self.pm25_std = pm25_samples.std()
 
         # Sample selected features for statistics using the meteorological indices
-        feature_samples = self.processed_data[sample_indices, :, self._metero_idx]
+        # Use efficient slicing for consecutive features
+        if len(self._metero_idx) == (self._metero_idx[-1] - self._metero_idx[0] + 1):
+            # Features are consecutive, can use direct slicing
+            feature_samples = self.processed_data[sample_indices, :, self._metero_idx[0]:self._metero_idx[-1]+1]
+        else:
+            # Features are not consecutive, use np.take
+            feature_samples = np.take(self.processed_data, self._metero_idx, axis=2)
+            feature_samples = feature_samples[sample_indices, :, :]
         self.feature_mean = feature_samples.mean(axis=(0,1))
         self.feature_std = feature_samples.std(axis=(0,1))
 
@@ -202,7 +209,15 @@ class HazeData(data.Dataset):
         pm25_sequence = self.processed_data[seq_start_idx:seq_end_idx, :, self._pm25_start_idx:self._pm25_end_idx]
 
         # Extract feature sequences with proper selection
-        feature_sequence = self.processed_data[seq_start_idx:seq_end_idx, :, self._metero_idx]
+        # Use slicing followed by reshape for efficiency
+        selected_data = self.processed_data[seq_start_idx:seq_end_idx, :, self._metero_idx[0]:self._metero_idx[-1]+1]
+        # If features are not consecutive, we need to select them properly
+        if len(self._metero_idx) == (self._metero_idx[-1] - self._metero_idx[0] + 1):
+            # Features are consecutive, can use direct slicing
+            feature_sequence = selected_data
+        else:
+            # Features are not consecutive, use advanced indexing
+            feature_sequence = selected_data[:, :, [i - self._metero_idx[0] for i in self._metero_idx]]
 
         # Apply wind feature reordering if needed
         if self._wspd_idx is not None and self._wdir_idx is not None:
