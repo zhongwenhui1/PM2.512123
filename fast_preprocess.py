@@ -62,6 +62,13 @@ class FastPreprocessor:
         data_cols = all_cols[5:]
 
         print(f"Station {station_name}: {len(data_cols)} features")
+        print(f"  All columns: {all_cols}")
+        print(f"  Data columns: {data_cols}")
+        if len(data_cols) == 667:
+            print("  Found 667 features! Checking...")
+            for i, col in enumerate(data_cols):
+                print(f"    {i:3d}: {col}")
+            input("Press Enter to continue...")  # Pause to examine
 
         # Create a sparse representation: only store actual data
         station_data_sparse = []
