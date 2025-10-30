@@ -12,7 +12,13 @@ with open(conf_fp) as f:
 
 
 # Universal file path configuration - works on any server
-nodename = os.uname().nodename
+try:
+    nodename = os.uname().nodename
+except AttributeError:
+    # Windows compatibility
+    import platform
+    nodename = platform.node()
+
 # Try to get server-specific path, fallback to default
 if 'filepath' in config and nodename in config['filepath']:
     file_dir = config['filepath'][nodename]

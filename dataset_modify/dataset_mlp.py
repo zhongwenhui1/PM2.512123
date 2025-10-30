@@ -39,94 +39,122 @@ class HazeData(data.Dataset):
         self.knowair_fp = file_dir['knowair_fp']
 
         self.graph = graph
+        self.hist_len = hist_len
+        self.pred_len = pred_len
 
         self._load_npy()
         self._gen_time_arr()
         self._process_time()
         self._process_feature()
-        self.feature = np.float32(self.feature)
-        self.pm25 = np.float32(self.pm25)
         self._calc_mean_std()
         seq_len = hist_len + pred_len
         self._add_time_dim(seq_len)
         self._norm()
 
     def _norm(self):
-        self.feature = (self.feature - self.feature_mean) / self.feature_std
-        self.pm25 = (self.pm25 - self.pm25_mean) / self.pm25_std
+        """Normalization will be applied in __getitem__ to save memory"""
+        print("Normalization will be applied during data loading")
+        self._normalization_enabled = True
 
     def _add_time_dim(self, seq_len):
+        """Add time dimension - implement lazy loading version"""
+        print(f"Creating time sequences with seq_len={seq_len}...")
 
-        def _add_t(arr, seq_len):
-            t_len = arr.shape[0]
-            assert t_len > seq_len
-            arr_ts = []
-            for i in range(seq_len, t_len):
-                arr_t = arr[i-seq_len:i]
-                arr_ts.append(arr_t)
-            arr_ts = np.stack(arr_ts, axis=0)
-            return arr_ts
+        def _add_t_lazy(arr_data, start_idx, end_idx, seq_len):
+            """Lazy time dimension creation - only create sequences when needed"""
+            time_steps = end_idx - start_idx
+            total_sequences = time_steps - seq_len + 1
 
-        self.pm25 = _add_t(self.pm25, seq_len)
-        self.feature = _add_t(self.feature, seq_len)
-        self.time_arr = _add_t(self.time_arr, seq_len)
+            # Just store the indices, don't create actual data yet
+            self._seq_len = seq_len
+            self._time_start_idx = start_idx
+            self._time_end_idx = end_idx
+            self._total_sequences = total_sequences
+
+        # Calculate time indices for the processed time range
+        total_time_steps = self.time_end_idx - self.time_start_idx
+        _add_t_lazy(None, self.time_start_idx, self.time_end_idx, seq_len)
+
+        print(f"Time sequences created: {self._total_sequences} sequences")
 
     def _calc_mean_std(self):
-        self.feature_mean = self.feature.mean(axis=(0,1))
-        self.feature_std = self.feature.std(axis=(0,1))
-        self.wind_mean = self.feature_mean[-2:]
-        self.wind_std = self.feature_std[-2:]
-        self.pm25_mean = self.pm25.mean()
-        self.pm25_std = self.pm25.std()
+        # Calculate statistics lazily - don't load all data at once
+        print("Calculating statistics (this may take a moment)...")
+
+        # Sample the data to calculate statistics (to avoid loading all data)
+        sample_size = min(1000, self.processed_data.shape[0])
+        sample_indices = np.random.choice(self.processed_data.shape[0], sample_size, replace=False)
+
+        # Sample PM2.5 for statistics
+        pm25_samples = self.processed_data[sample_indices, :, self._pm25_start_idx:self._pm25_end_idx]
+        self.pm25_mean = pm25_samples.mean()
+        self.pm25_std = pm25_samples.std()
+
+        # Sample selected features for statistics using the meteorological indices
+        feature_samples = self.processed_data[sample_indices, :, self._metero_idx]
+        self.feature_mean = feature_samples.mean(axis=(0,1))
+        self.feature_std = feature_samples.std(axis=(0,1))
+
+        # Wind statistics (if available)
+        if 'WSPD100' in config['experiments']['metero_use'] and 'WDIR100' in config['experiments']['metero_use']:
+            # Find wind feature positions in the selected features
+            if self._wspd_idx is not None and self._wdir_idx is not None:
+                self.wind_mean = np.array([self.feature_mean[self._wspd_idx], self.feature_mean[self._wdir_idx]])
+                self.wind_std = np.array([self.feature_std[self._wspd_idx], self.feature_std[self._wdir_idx]])
+            else:
+                self.wind_mean = np.array([0.0, 0.0])
+                self.wind_std = np.array([1.0, 1.0])
+        else:
+            self.wind_mean = np.array([0.0, 0.0])
+            self.wind_std = np.array([1.0, 1.0])
+
+        print(f"Statistics calculated - PM2.5: mean={self.pm25_mean:.4f}, std={self.pm25_std:.4f}")
+        print(f"Features shape: {feature_samples.shape}, Feature mean: {self.feature_mean.mean():.4f}")
 
     def _process_feature(self):
         """Process features for MLP model - avoid data leakage"""
+        print("Processing feature configuration...")
 
         # Get feature configuration
         metero_var = config['data']['metero_var']
         metero_use = config['experiments']['metero_use']
 
         # Find indices of selected features in our 666-dimension data
-        metero_idx = []
+        self._metero_idx = []
         for var in metero_use:
             if var in metero_var:
                 idx = metero_var.index(var)
-                metero_idx.append(idx)
+                self._metero_idx.append(idx)
 
-        # Extract selected features
-        self.feature = self.feature[:,:,metero_idx]
+        # Store feature information for lazy loading
+        self._metero_use = metero_use
+        print(f"Selected {len(self._metero_idx)} features: {metero_use}")
 
-        # Check wind features for model compatibility
+        # Handle wind features for model compatibility - find their indices in the selected features
         if 'WSPD100' in metero_use and 'WDIR100' in metero_use:
-            wspd_idx = metero_use.index('WSPD100')
-            wdir_idx = metero_use.index('WDIR100')
-
-            # Extract wind features
-            speed = self.feature[:, :, wspd_idx]
-            direc = self.feature[:, :, wdir_idx]
-
-            # Remove wind features from current position
-            other_indices = [i for i in range(len(metero_use)) if i not in [wspd_idx, wdir_idx]]
-            other_features = self.feature[:, :, other_indices]
-
-            # Add wind features at the end (for model compatibility)
-            self.feature = np.concatenate([other_features, speed[:, :, None], direc[:, :, None]], axis=-1)
-
-            # Update wind statistics
-            self.wind_mean = np.array([speed.mean(), direc.mean()])
-            self.wind_std = np.array([speed.std(), direc.std()])
+            self._wspd_idx = metero_use.index('WSPD100')  # Position in selected features list
+            self._wdir_idx = metero_use.index('WDIR100')  # Position in selected features list
+            print("Wind features detected: WSPD100, WDIR100")
         else:
-            # Default wind statistics if not available
-            self.wind_mean = np.array([0.0, 0.0])
-            self.wind_std = np.array([1.0, 1.0])
+            self._wspd_idx = None
+            self._wdir_idx = None
+            print("No wind features found")
+
+        # Set default wind statistics
+        self.wind_mean = np.array([0.0, 0.0])
+        self.wind_std = np.array([1.0, 1.0])
 
     def _process_time(self):
         start_idx = self._get_idx(self.start_time)
         end_idx = self._get_idx(self.end_time)
-        self.pm25 = self.pm25[start_idx: end_idx+1, :]
-        self.feature = self.feature[start_idx: end_idx+1, :]
-        self.time_arr = self.time_arr[start_idx: end_idx+1]
-        self.time_arrow = self.time_arrow[start_idx: end_idx + 1]
+
+        # Calculate time range indices
+        self.time_start_idx = start_idx
+        self.time_end_idx = end_idx + 1
+
+        # Process time array (no data slicing needed yet)
+        self.time_arr = self.time_arr[self.time_start_idx:self.time_end_idx]
+        self.time_arrow = self.time_arrow[self.time_start_idx:self.time_end_idx]
 
     def _gen_time_arr(self):
         """Generate time array for hourly data"""
@@ -163,14 +191,46 @@ class HazeData(data.Dataset):
         return arrow_time
 
     def __len__(self):
-        return self.processed_data.shape[0] - (hist_len + pred_len) + 1
+        return self.processed_data.shape[0] - (self.hist_len + self.pred_len) + 1
 
     def __getitem__(self, index):
-        # Lazy loading - only create slices when needed
-        pm25_slice = self.processed_data[index, :, self._pm25_start_idx:self._pm25_end_idx]
-        feature_slice = self.processed_data[index, :, self._feature_start_idx:self._feature_end_idx]
+        # Create time sequences lazily
+        seq_start_idx = self._time_start_idx + index
+        seq_end_idx = seq_start_idx + self._seq_len
 
-        return pm25_slice, feature_slice, self.time_arr[index]
+        # Extract PM2.5 sequence
+        pm25_sequence = self.processed_data[seq_start_idx:seq_end_idx, :, self._pm25_start_idx:self._pm25_end_idx]
+
+        # Extract feature sequences with proper selection
+        feature_sequence = self.processed_data[seq_start_idx:seq_end_idx, :, self._metero_idx]
+
+        # Apply wind feature reordering if needed
+        if self._wspd_idx is not None and self._wdir_idx is not None:
+            # Reorder features to put wind features at the end (for model compatibility)
+            other_indices = [i for i in range(len(self._metero_idx)) if i not in [self._wspd_idx, self._wdir_idx]]
+
+            # Extract non-wind features
+            other_features = feature_sequence[:, :, other_indices]
+
+            # Extract wind features
+            wspd_sequence = feature_sequence[:, :, self._wspd_idx]
+            wdir_sequence = feature_sequence[:, :, self._wdir_idx]
+
+            # Reorder: [other_features, wspd, wdir]
+            feature_sequence = np.concatenate([other_features, wspd_sequence[:, :, None], wdir_sequence[:, :, None]], axis=-1)
+        else:
+            # No reordering needed
+            pass
+
+        # Apply normalization
+        if hasattr(self, '_normalization_enabled') and self._normalization_enabled:
+            pm25_sequence = (pm25_sequence - self.pm25_mean) / self.pm25_std
+            feature_sequence = (feature_sequence - self.feature_mean) / self.feature_std
+
+        # Get corresponding time data
+        time_data = self.time_arr[index]
+
+        return pm25_sequence, feature_sequence, time_data
 
 
 if __name__ == '__main__':
