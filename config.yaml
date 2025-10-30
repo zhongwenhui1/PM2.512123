@@ -13,7 +13,7 @@ experiments:
 #  model: nodesFC_GRU
 
 train:
-  batch_size: 2
+  batch_size: 32
   epochs: 50
   exp_repeat: 3
   hist_len: 6  # Use 6 hours of historical data to reduce memory usage
@@ -26,8 +26,8 @@ train:
 
 filepath:
   GPU-Server:
-    knowair_fp: ./processed_data/processed_data.npy
-    results_dir: ./results
+    knowair_fp: /root/autodl-tmp/processed_data/processed_data.npy
+    results_dir: /root/autodl-tmp/results
 
 data:
   metero_var:

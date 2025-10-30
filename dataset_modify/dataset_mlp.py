@@ -201,7 +201,7 @@ class HazeData(data.Dataset):
         return arrow_time
 
     def __len__(self):
-        return self.processed_data.shape[0] - (self.hist_len + self.pred_len) + 1
+        return self._total_sequences
 
     def __getitem__(self, index):
         # Create time sequences lazily
