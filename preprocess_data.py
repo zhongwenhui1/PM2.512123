@@ -56,14 +56,22 @@ class DataPreprocessor:
 
     def parse_datetime(self, datetime_str):
         """Parse datetime string from CSV"""
-        try:
-            return datetime.strptime(datetime_str, "%Y/%m/%d %H:%M")
-        except ValueError:
+        formats_to_try = [
+            "%Y/%m/%d %H:%M:%S",    # 2022/01/01 00:00:00
+            "%Y-%m-%d %H:%M:%S",    # 2022-01-01 00:00:00
+            "%Y/%m/%d %H:%M",       # 2022/01/01 00:00
+            "%Y-%m-%d %H:%M",       # 2022-01-01 00:00
+            "%Y/%-m/%-d %H:%M",     # 2022/1/1 0:00
+            "%Y-%-m-%-d %H:%M",     # 2022-1-1 0:00
+        ]
+
+        for fmt in formats_to_try:
             try:
-                # Try alternative format
-                return datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
+                return datetime.strptime(datetime_str, fmt)
             except ValueError:
-                raise ValueError(f"Cannot parse datetime: {datetime_str}")
+                continue
+
+        raise ValueError(f"Cannot parse datetime: {datetime_str}")
 
     def extract_forecast_var(self, col_name):
         """Extract forecast variable name and hour from column name like T2M_C(01)"""
