@@ -1,16 +1,16 @@
 ---
 experiments:
-  metero_use: ['PM10', 'SO2', 'NO2', 'O3', 'CO', 'T2M_C', 'D2M_C', 'PRES_hPa',
-               'APCP1h_mm', 'RH2M_pct', 'WSPD100', 'WDIR100', 'Month', 'Weekday', 'Hour']
+  metero_use: ['Month', 'Weekday', 'Hour', 'PM10', 'SO2', 'NO2', 'O3', 'CO', 'T2M_C', 'D2M_C', 'PRES_hPa',
+               'APCP1h_mm', 'RH2M_pct', 'U100', 'V100', 'WSPD100', 'WDIR100']
   save_npy: True
   dataset_num: 1
-  model: PM25_GNN
+  model: MLP
+#  model: PM25_GNN
 #  model: PM25_GNN_nosub
 #  model: GC_LSTM
 #  model: LSTM
 #  model: GRU
 #  model: nodesFC_GRU
-#  model: MLP
 
 train:
   batch_size: 32
@@ -21,6 +21,8 @@ train:
   weight_decay: 0.0005
   early_stop: 10
   lr: 0.0005
+  optimizer: 'RMSprop'  # Can be 'Adam' or 'RMSprop'
+  momentum: 0.9  # For RMSprop if used
 
 filepath:
   GPU-Server:
@@ -29,12 +31,9 @@ filepath:
 
 data:
   metero_var:
-    ['PM2.5', 'PM10', 'SO2', 'NO2', 'O3', 'CO', 'T2M_C', 'D2M_C', 'PRES_hPa',
-     'APCP1h_mm', 'RH2M_pct', 'WSPD100', 'WDIR100', 'U100', 'V100', 'Month',
-     'Weekday', 'Hour', 'T2M_C(01)', 'D2M_C(01)', 'PRES_hPa(01)', 'APCP1h_mm(01)',
-     'RH2M_pct(01)', 'WSPD100(01)', 'WDIR100(01)', 'U100(01)', 'V100(01)', 'PM2.5(01)']
-     # Note: This is just a sample - full list includes all 666 features
-     # See processed_data/feature_mapping.txt for complete list
+    ['PM2.5', 'Month', 'Weekday', 'Hour', 'PM10', 'SO2', 'NO2', 'O3', 'CO', 'T2M_C', 'D2M_C', 'PRES_hPa',
+     'APCP1h_mm', 'RH2M_pct', 'U100', 'V100', 'WSPD100', 'WDIR100']
+     # Note: Only using observation features for MLP model, no forecast data to avoid data leakage
 
 forecast:
   use_hours: 48  # Can be set to 48 or 72 depending on prediction length
@@ -46,25 +45,25 @@ dataset:
   data_end: [[2024, 12, 31, 23, 0], GMT]
 
   1:
-    train_start: [[2022, 1, 1], GMT]
-    train_end: [[2023, 12, 31], GMT]
-    val_start: [[2024, 1, 1], GMT]
-    val_end: [[2024, 6, 30], GMT]
-    test_start: [[2024, 7, 1], GMT]
-    test_end: [[2024, 12, 31], GMT]
+    train_start: [[2022, 1, 1, 0, 0], GMT]
+    train_end: [[2023, 6, 30, 23, 0], GMT]
+    val_start: [[2023, 7, 1, 0, 0], GMT]
+    val_end: [[2024, 6, 16, 23, 0], GMT]
+    test_start: [[2024, 6, 27, 0, 0], GMT]
+    test_end: [[2024, 12, 31, 23, 0], GMT]
 
   2:
-    train_start: [[2022, 1, 1], GMT]
-    train_end: [[2023, 6, 30], GMT]
-    val_start: [[2023, 7, 1], GMT]
-    val_end: [[2023, 9, 30], GMT]
-    test_start: [[2023, 10, 1], GMT]
-    test_end: [[2023, 12, 31], GMT]
+    train_start: [[2022, 1, 1, 0, 0], GMT]
+    train_end: [[2023, 6, 30, 23, 0], GMT]
+    val_start: [[2023, 7, 1, 0, 0], GMT]
+    val_end: [[2024, 6, 16, 23, 0], GMT]
+    test_start: [[2024, 6, 27, 0, 0], GMT]
+    test_end: [[2024, 12, 31, 23, 0], GMT]
 
   3:
-    train_start: [[2022, 1, 1], GMT]
-    train_end: [[2022, 12, 31], GMT]
-    val_start: [[2023, 1, 1], GMT]
-    val_end: [[2023, 3, 31], GMT]
-    test_start: [[2023, 4, 1], GMT]
-    test_end: [[2023, 6, 30], GMT]
+    train_start: [[2022, 1, 1, 0, 0], GMT]
+    train_end: [[2023, 6, 30, 23, 0], GMT]
+    val_start: [[2023, 7, 1, 0, 0], GMT]
+    val_end: [[2024, 6, 16, 23, 0], GMT]
+    test_start: [[2024, 6, 27, 0, 0], GMT]
+    test_end: [[2024, 12, 31, 23, 0], GMT]
