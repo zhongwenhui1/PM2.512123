@@ -10,6 +10,7 @@ import arrow
 import metpy.calc as mpcalc
 from metpy.units import units
 from torch.utils import data
+import pandas as pd
 
 
 class HazeData(data.Dataset):
@@ -82,29 +83,41 @@ class HazeData(data.Dataset):
         self.pm25_std = self.pm25.std()
 
     def _process_feature(self):
+        """Process features: select variables and handle forecast data"""
+        # Get configuration
         metero_var = config['data']['metero_var']
         metero_use = config['experiments']['metero_use']
-        metero_idx = [metero_var.index(var) for var in metero_use]
+
+        # Select observation variables (excluding PM2.5 which is already extracted)
+        obs_vars = [var for var in metero_use if var != 'PM2.5']
+        metero_idx = [metero_var.index(var) - 1 for var in obs_vars]  # -1 because PM2.5 is removed
         self.feature = self.feature[:,:,metero_idx]
 
-        u = self.feature[:, :, -2] * units.meter / units.second
-        v = self.feature[:, :, -1] * units.meter / units.second
-        speed = 3.6 * mpcalc.wind_speed(u, v)._magnitude
-        direc = mpcalc.wind_direction(u, v)._magnitude
+        # Handle wind speed and direction if available
+        # Check if WSPD100 and WDIR100 are in selected variables
+        if 'WSPD100' in obs_vars and 'WDIR100' in obs_vars:
+            # Extract wind speed and direction for model compatibility
+            wspd_idx = obs_vars.index('WSPD100')
+            wdir_idx = obs_vars.index('WDIR100')
 
-        h_arr = []
-        w_arr = []
-        for i in self.time_arrow:
-            h_arr.append(i.hour)
-            w_arr.append(i.isoweekday())
-        h_arr = np.stack(h_arr, axis=-1)
-        w_arr = np.stack(w_arr, axis=-1)
-        h_arr = np.repeat(h_arr[:, None], self.graph.node_num, axis=1)
-        w_arr = np.repeat(w_arr[:, None], self.graph.node_num, axis=1)
+            speed = self.feature[:, :, wspd_idx]
+            direc = self.feature[:, :, wdir_idx]
 
-        self.feature = np.concatenate([self.feature, h_arr[:, :, None], w_arr[:, :, None],
-                                       speed[:, :, None], direc[:, :, None]
-                                       ], axis=-1)
+            # For model compatibility, ensure wind features are at the end
+            # Remove them from current position and add to the end
+            other_features = np.delete(self.feature, [wspd_idx, wdir_idx], axis=2)
+            self.feature = np.concatenate([other_features, speed[:, :, None], direc[:, :, None]], axis=-1)
+
+            # Update wind mean and std for model compatibility
+            self.wind_mean = np.array([speed.mean(), direc.mean()])
+            self.wind_std = np.array([speed.std(), direc.std()])
+        else:
+            # If no wind data, set default values
+            self.wind_mean = np.array([0.0, 0.0])
+            self.wind_std = np.array([1.0, 1.0])
+
+        # Note: Time features (Month, Weekday, Hour) are already in the data
+        # No need to add them dynamically like in the original code
 
     def _process_time(self):
         start_idx = self._get_idx(self.start_time)
@@ -115,21 +128,28 @@ class HazeData(data.Dataset):
         self.time_arrow = self.time_arrow[start_idx: end_idx + 1]
 
     def _gen_time_arr(self):
+        """Generate time array for hourly data (changed from 3-hourly to hourly)"""
         self.time_arrow = []
         self.time_arr = []
-        for time_arrow in arrow.Arrow.interval('hour', self.data_start, self.data_end.shift(hours=+3), 3):
+        for time_arrow in arrow.Arrow.interval('hour', self.data_start, self.data_end.shift(hours=+1), 1):
             self.time_arrow.append(time_arrow[0])
             self.time_arr.append(time_arrow[0].timestamp)
         self.time_arr = np.stack(self.time_arr, axis=-1)
 
     def _load_npy(self):
-        self.knowair = np.load(self.knowair_fp)
-        self.feature = self.knowair[:,:,:-1]
-        self.pm25 = self.knowair[:,:,-1:]
+        """Load processed data from numpy file"""
+        self.processed_data = np.load(self.knowair_fp)
+
+        # Extract PM2.5 (first feature in our processed data)
+        self.pm25 = self.processed_data[:, :, 0:1]
+
+        # Extract other features (all except PM2.5)
+        self.feature = self.processed_data[:, :, 1:]
 
     def _get_idx(self, t):
+        """Get time index for hourly data (changed from 3-hourly to hourly)"""
         t0 = self.data_start
-        return int((t.timestamp - t0.timestamp) / (60 * 60 * 3))
+        return int((t.timestamp - t0.timestamp) / (60 * 60))
 
     def _get_time(self, time_yaml):
         arrow_time = arrow.get(datetime(*time_yaml[0]), time_yaml[1])
