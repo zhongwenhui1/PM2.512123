@@ -11,8 +11,20 @@ with open(conf_fp) as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 
+# Universal file path configuration - works on any server
 nodename = os.uname().nodename
-file_dir = config['filepath'][nodename]
+# Try to get server-specific path, fallback to default
+if 'filepath' in config and nodename in config['filepath']:
+    file_dir = config['filepath'][nodename]
+elif 'GPU-Server' in config.get('filepath', {}):
+    # Fallback to GPU-Server configuration
+    file_dir = config['filepath']['GPU-Server']
+else:
+    # Final fallback - use default paths
+    file_dir = {
+        'knowair_fp': './processed_data/processed_data.npy',
+        'results_dir': './results'
+    }
 
 
 def main():
