@@ -32,14 +32,14 @@ data:
     ['PM2.5', 'PM10', 'SO2', 'NO2', 'O3', 'CO', 'T2M_C', 'D2M_C', 'PRES_hPa',
      'APCP1h_mm', 'RH2M_pct', 'WSPD100', 'WDIR100', 'U100', 'V100', 'Month',
      'Weekday', 'Hour', 'T2M_C(01)', 'D2M_C(01)', 'PRES_hPa(01)', 'APCP1h_mm(01)',
-     'RH2M_pct(01)', 'WSPD100(01)', 'WDIR100(01)', 'U100(01)', 'V100(01)']
-     # Note: This is just a sample - full list includes all 594 features
+     'RH2M_pct(01)', 'WSPD100(01)', 'WDIR100(01)', 'U100(01)', 'V100(01)', 'PM2.5(01)']
+     # Note: This is just a sample - full list includes all 666 features
      # See processed_data/feature_mapping.txt for complete list
 
 forecast:
   use_hours: 48  # Can be set to 48 or 72 depending on prediction length
   forecast_vars: ['T2M_C', 'D2M_C', 'PRES_hPa', 'APCP1h_mm', 'RH2M_pct',
-                  'WSPD100', 'WDIR100', 'U100', 'V100']
+                  'WSPD100', 'WDIR100', 'U100', 'V100']  # 9 forecast variables
 
 dataset:
   data_start: [[2022, 1, 1, 0, 0], GMT]

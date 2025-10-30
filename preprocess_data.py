@@ -123,6 +123,8 @@ class DataPreprocessor:
         print(f"Station {station_name}: {actual_obs_count} obs, {actual_time_count} time, "
               f"{len(actual_forecast_vars)} forecast vars × {max_hour} hours = {actual_forecast_count} forecast features")
         print(f"  Total: {actual_total_count} features")
+        if len(actual_forecast_vars) > 0:
+            print(f"  Forecast variables found: {sorted(list(actual_forecast_vars))}")
 
         # Initialize data array with actual feature count
         station_data = np.full((len(time_index), actual_total_count), np.nan)
@@ -203,7 +205,7 @@ class DataPreprocessor:
 
         if parallel:
             # Use parallel processing
-            num_workers = min(cpu_count(), 16)  # Cap at 16 workers to avoid overloading
+            num_workers = min(cpu_count(), 4)  # Use fewer workers to avoid memory issues
             print(f"Using {num_workers} parallel workers")
 
             station_data_list = []
@@ -334,7 +336,7 @@ def main():
     print("Starting data preprocessing...")
 
     preprocessor = DataPreprocessor(csv_folder, output_folder)
-    all_data, station_info = preprocessor.preprocess_all_data(parallel=True)  # Use parallel processing
+    all_data, station_info = preprocessor.preprocess_all_data(parallel=True)  # Use parallel processing with fewer workers
 
     print("Data preprocessing completed!")
     print(f"Processed {len(station_info)} stations")
