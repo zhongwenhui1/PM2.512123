@@ -57,10 +57,26 @@ test_data = HazeData(graph, hist_len, pred_len, dataset_num, flag='Test')
 print("Test data loaded successfully!")
 
 # Calculate dimensions
-in_dim = train_data.feature.shape[-1]
+in_dim = len(train_data._metero_idx)  # Number of selected features
 city_num = train_data.graph.node_num
 wind_mean, wind_std = train_data.wind_mean, train_data.wind_std
 pm25_mean, pm25_std = test_data.pm25_mean, test_data.pm25_std
+
+print(f"Model input dimension: {in_dim}")
+print(f"Number of cities: {city_num}")
+print(f"Wind mean: {wind_mean}, Wind std: {wind_std}")
+print(f"PM2.5 mean: {pm25_mean:.4f}, PM2.5 std: {pm25_std:.4f}")
+
+# Test data format with a small sample
+print("Testing data format...")
+from torch.utils.data import DataLoader
+test_loader = DataLoader(train_data, batch_size=2, shuffle=False)
+sample_batch = next(iter(test_loader))
+pm25_batch, feature_batch, time_batch = sample_batch
+print(f"Batch PM2.5 shape: {pm25_batch.shape}")
+print(f"Batch feature shape: {feature_batch.shape}")
+print(f"Expected format: [batch_size={pm25_batch.shape[0]}, seq_len={pm25_batch.shape[1]}, city_num={pm25_batch.shape[2]}, features=1]")
+print("Data format test completed successfully!")
 
 
 def get_metric(predict_epoch, label_epoch):
