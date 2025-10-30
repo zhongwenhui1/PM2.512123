@@ -71,13 +71,24 @@ print(f"PM2.5 mean: {pm25_mean:.4f}, PM2.5 std: {pm25_std:.4f}")
 print("Testing individual sample...")
 try:
     sample_pm25, sample_feature, sample_time = train_data[0]
-    print(f"Sample PM2.5 shape: {sample_pm25.shape}")
-    print(f"Sample feature shape: {sample_feature.shape}")
-    print(f"Sample time shape: {sample_time.shape}")
-    print(f"Sample time type: {type(sample_time)}")
+    print(f"Sample PM2.5 shape: {sample_pm25.shape}, type: {type(sample_pm25)}, dtype: {sample_pm25.dtype}")
+    print(f"Sample feature shape: {sample_feature.shape}, type: {type(sample_feature)}, dtype: {sample_feature.dtype}")
+    print(f"Sample time shape: {sample_time.shape}, type: {type(sample_time)}, dtype: {sample_time.dtype}")
     print("Individual sample test passed!")
+
+    # Test DataLoader with single batch
+    print("Testing DataLoader with single batch...")
+    from torch.utils.data import DataLoader
+    test_loader = DataLoader(train_data, batch_size=2, shuffle=False)
+    test_batch = next(iter(test_loader))
+    pm25_batch, feature_batch, time_batch = test_batch
+    print(f"Batch PM2.5 shape: {pm25_batch.shape}, type: {type(pm25_batch)}")
+    print(f"Batch feature shape: {feature_batch.shape}, type: {type(feature_batch)}")
+    print(f"Batch time shape: {time_batch.shape}, type: {type(time_batch)}")
+    print("DataLoader test passed!")
+
 except Exception as e:
-    print(f"Error testing individual sample: {e}")
+    print(f"Error testing data: {e}")
     import traceback
     traceback.print_exc()
     exit(1)

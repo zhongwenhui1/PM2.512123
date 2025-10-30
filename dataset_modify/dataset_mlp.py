@@ -248,6 +248,11 @@ class HazeData(data.Dataset):
         # Get corresponding time data
         time_data = self.time_arr[index]
 
+        # Ensure all returned data are numpy arrays with correct types
+        pm25_sequence = np.asarray(pm25_sequence, dtype=np.float32)
+        feature_sequence = np.asarray(feature_sequence, dtype=np.float32)
+        time_data = np.asarray(time_data, dtype=np.float64)  # timestamps are usually float64
+
         return pm25_sequence, feature_sequence, time_data
 
 
