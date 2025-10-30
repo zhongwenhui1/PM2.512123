@@ -17,8 +17,8 @@ def process_single_file(csv_file, time_index):
     try:
         station_name = os.path.basename(csv_file).replace('.csv', '')
 
-        # Fast CSV reading - skip validation
-        df = pd.read_csv(csv_file, engine='c', dtype='float32', na_values=['', 'NA', 'N/A'])
+        # Fast CSV reading - handle datetime column separately
+        df = pd.read_csv(csv_file, engine='c', na_values=['', 'NA', 'N/A'])
 
         # Convert datetime - fast method
         df['DateTime'] = pd.to_datetime(df['DateTime'], format='mixed', errors='coerce')
