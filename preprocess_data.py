@@ -24,6 +24,10 @@ from datetime import datetime, timedelta
 import glob
 from tqdm import tqdm
 import re
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from multiprocessing import cpu_count
+import warnings
+warnings.filterwarnings('ignore')
 
 class DataPreprocessor:
     def __init__(self, csv_folder, output_folder):
@@ -96,8 +100,32 @@ class DataPreprocessor:
         # Create complete time series with hourly resolution
         time_index = pd.date_range(start=self.start_time, end=self.end_time, freq='H')
 
-        # Initialize data array for this station
-        station_data = np.full((len(time_index), self.total_feature_count), np.nan)
+        # Dynamically calculate actual feature count from this file
+        obs_cols = [col for col in df.columns if col in self.observation_vars]
+        time_cols = [col for col in df.columns if col in self.time_vars]
+        forecast_cols = [col for col in df.columns if '(' in col and ')' in col]
+
+        # Calculate actual forecast hours and variables
+        max_hour = 0
+        actual_forecast_vars = set()
+        for col in forecast_cols:
+            var_name, hour = self.extract_forecast_var(col)
+            if var_name and hour <= 100:  # Allow up to 100 hours
+                max_hour = max(max_hour, hour)
+                actual_forecast_vars.add(var_name)
+
+        # Update feature count with actual values
+        actual_obs_count = len(obs_cols)
+        actual_time_count = len(time_cols)
+        actual_forecast_count = len(actual_forecast_vars) * max_hour
+        actual_total_count = actual_obs_count + actual_time_count + actual_forecast_count
+
+        print(f"Station {station_name}: {actual_obs_count} obs, {actual_time_count} time, "
+              f"{len(actual_forecast_vars)} forecast vars × {max_hour} hours = {actual_forecast_count} forecast features")
+        print(f"  Total: {actual_total_count} features")
+
+        # Initialize data array with actual feature count
+        station_data = np.full((len(time_index), actual_total_count), np.nan)
 
         # Map time to index
         time_to_idx = {t: i for i, t in enumerate(time_index)}
@@ -108,24 +136,23 @@ class DataPreprocessor:
                 idx = time_to_idx[row['DateTime_parsed']]
 
                 # Observation variables
-                for j, var in enumerate(self.observation_vars):
+                for j, var in enumerate(obs_cols):
                     if var in row and not pd.isna(row[var]):
                         station_data[idx, j] = row[var]
 
                 # Time variables
-                for j, var in enumerate(self.time_vars):
+                for j, var in enumerate(time_cols):
                     if var in row and not pd.isna(row[var]):
-                        station_data[idx, self.observation_count + j] = row[var]
+                        station_data[idx, actual_obs_count + j] = row[var]
 
-        # Fill in forecast data
-        forecast_cols = [col for col in df.columns if '(' in col and ')' in col]
-
+        # Fill in forecast data (sort by hour then by variable name for consistency)
+        actual_forecast_vars = sorted(list(actual_forecast_vars))
         for col in forecast_cols:
             var_name, hour = self.extract_forecast_var(col)
-            if var_name and hour <= 72:  # We only need up to 72 hours
-                var_idx = self.forecast_vars.index(var_name)
-                forecast_idx = (hour - 1) * len(self.forecast_vars) + var_idx
-                feature_idx = self.observation_count + self.time_count + forecast_idx
+            if var_name and var_name in actual_forecast_vars and hour <= max_hour:
+                var_idx = actual_forecast_vars.index(var_name)
+                forecast_idx = (hour - 1) * len(actual_forecast_vars) + var_idx
+                feature_idx = actual_obs_count + actual_time_count + forecast_idx
 
                 for i, row in df.iterrows():
                     if row['DateTime_parsed'] in time_to_idx:
@@ -140,42 +167,109 @@ class DataPreprocessor:
                 'name': station_name,
                 'city': first_row.get('City', ''),
                 'lon': first_row.get('Lon', 0),
-                'lat': first_row.get('Lat', 0)
+                'lat': first_row.get('Lat', 0),
+                'actual_feature_count': actual_total_count,
+                'actual_obs_vars': obs_cols,
+                'actual_time_vars': time_cols,
+                'actual_forecast_vars': actual_forecast_vars,
+                'max_forecast_hour': max_hour
             }
         else:
             station_info = {
                 'name': station_name,
                 'city': '',
                 'lon': 0,
-                'lat': 0
+                'lat': 0,
+                'actual_feature_count': actual_total_count,
+                'actual_obs_vars': obs_cols,
+                'actual_time_vars': time_cols,
+                'actual_forecast_vars': actual_forecast_vars,
+                'max_forecast_hour': max_hour
             }
 
         return station_data, station_info
 
-    def preprocess_all_data(self):
-        """Process all station data"""
+    def _process_single_station(self, csv_file):
+        """Process a single station file (for parallel processing)"""
+        try:
+            station_data, station_info = self.load_station_data(csv_file)
+            return csv_file, station_data, station_info, None
+        except Exception as e:
+            return csv_file, None, None, str(e)
+
+    def preprocess_all_data(self, parallel=True):
+        """Process all station data with optional parallel processing"""
         print("Loading station data...")
 
-        station_data_list = []
-        station_info_list = []
+        if parallel:
+            # Use parallel processing
+            num_workers = min(cpu_count(), 16)  # Cap at 16 workers to avoid overloading
+            print(f"Using {num_workers} parallel workers")
 
-        for csv_file in tqdm(self.station_files):
-            try:
-                station_data, station_info = self.load_station_data(csv_file)
-                station_data_list.append(station_data)
-                station_info_list.append(station_info)
-            except Exception as e:
-                print(f"Error processing {csv_file}: {e}")
-                continue
+            station_data_list = []
+            station_info_list = []
+
+            with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                # Submit all tasks
+                future_to_file = {
+                    executor.submit(self._process_single_station, csv_file): csv_file
+                    for csv_file in self.station_files
+                }
+
+                # Process completed tasks
+                for future in tqdm(as_completed(future_to_file), total=len(self.station_files)):
+                    csv_file = future_to_file[future]
+                    try:
+                        _, station_data, station_info, error = future.result()
+                        if error:
+                            print(f"Error processing {csv_file}: {error}")
+                            continue
+                        station_data_list.append(station_data)
+                        station_info_list.append(station_info)
+                    except Exception as e:
+                        print(f"Error processing {csv_file}: {e}")
+                        continue
+        else:
+            # Sequential processing (original)
+            station_data_list = []
+            station_info_list = []
+
+            for csv_file in tqdm(self.station_files):
+                try:
+                    station_data, station_info = self.load_station_data(csv_file)
+                    station_data_list.append(station_data)
+                    station_info_list.append(station_info)
+                except Exception as e:
+                    print(f"Error processing {csv_file}: {e}")
+                    continue
 
         if not station_data_list:
             raise ValueError("No valid station data found!")
 
+        # Check if all stations have the same feature count
+        feature_counts = [info['actual_feature_count'] for info in station_info_list]
+        if len(set(feature_counts)) > 1:
+            print(f"Warning: Different feature counts found: {set(feature_counts)}")
+            print("Using the most common feature count")
+            most_common_count = max(set(feature_counts), key=feature_counts.count)
+
+            # Filter to stations with the most common feature count
+            filtered_data = []
+            filtered_info = []
+            for data, info in zip(station_data_list, station_info_list):
+                if info['actual_feature_count'] == most_common_count:
+                    filtered_data.append(data)
+                    filtered_info.append(info)
+
+            station_data_list = filtered_data
+            station_info_list = filtered_info
+            print(f"Kept {len(station_data_list)} stations with {most_common_count} features")
+
         # Stack all station data
         all_data = np.stack(station_data_list, axis=1)  # (time_steps, station_num, features)
 
-        print(f"Data shape: {all_data.shape}")
-        print(f"Expected shape: ({self.time_steps}, {len(station_data_list)}, {self.total_feature_count})")
+        print(f"Final data shape: {all_data.shape}")
+        print(f"Time steps: {all_data.shape[0]}, Stations: {all_data.shape[1]}, Features: {all_data.shape[2]}")
 
         # Create output directory
         os.makedirs(self.output_folder, exist_ok=True)
@@ -184,6 +278,9 @@ class DataPreprocessor:
         output_file = os.path.join(self.output_folder, 'processed_data.npy')
         np.save(output_file, all_data)
         print(f"Saved processed data to: {output_file}")
+
+        # Use the first station's feature info for mapping
+        feature_info = station_info_list[0]
 
         # Save station info
         station_info_file = os.path.join(self.output_folder, 'station_info.txt')
@@ -198,27 +295,34 @@ class DataPreprocessor:
         feature_mapping_file = os.path.join(self.output_folder, 'feature_mapping.txt')
         with open(feature_mapping_file, 'w', encoding='utf-8') as f:
             f.write("# Feature mapping\n")
-            f.write("# Total features: 594\n")
+            f.write(f"# Total features: {feature_info['actual_feature_count']}\n")
             f.write("# Format: Index\tFeatureName\tDescription\n")
 
             idx = 0
             # Observation variables
-            for var in self.observation_vars:
+            for var in feature_info['actual_obs_vars']:
                 f.write(f"{idx}\t{var}\tObservation_{var}\n")
                 idx += 1
 
             # Time variables
-            for var in self.time_vars:
+            for var in feature_info['actual_time_vars']:
                 f.write(f"{idx}\t{var}\tTime_{var}\n")
                 idx += 1
 
             # Forecast variables
-            for hour in range(1, 73):
-                for var in self.forecast_vars:
+            actual_forecast_vars = sorted(list(feature_info['actual_forecast_vars']))
+            max_hour = feature_info['max_forecast_hour']
+            for hour in range(1, max_hour + 1):
+                for var in actual_forecast_vars:
                     f.write(f"{idx}\t{var}({hour:02d})\tForecast_{var}_Hour{hour}\n")
                     idx += 1
 
         print(f"Saved feature mapping to: {feature_mapping_file}")
+        print(f"Actual feature breakdown:")
+        print(f"  Observation: {len(feature_info['actual_obs_vars'])}")
+        print(f"  Time: {len(feature_info['actual_time_vars'])}")
+        print(f"  Forecast: {len(actual_forecast_vars)} × {max_hour} = {len(actual_forecast_vars) * max_hour}")
+        print(f"  Total: {feature_info['actual_feature_count']}")
 
         return all_data, station_info_list
 
@@ -230,7 +334,7 @@ def main():
     print("Starting data preprocessing...")
 
     preprocessor = DataPreprocessor(csv_folder, output_folder)
-    all_data, station_info = preprocessor.preprocess_all_data()
+    all_data, station_info = preprocessor.preprocess_all_data(parallel=True)  # Use parallel processing
 
     print("Data preprocessing completed!")
     print(f"Processed {len(station_info)} stations")
