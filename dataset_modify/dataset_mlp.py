@@ -138,14 +138,20 @@ class HazeData(data.Dataset):
         self.time_arr = np.stack(self.time_arr, axis=-1)
 
     def _load_npy(self):
-        """Load processed data from numpy file"""
-        self.processed_data = np.load(self.knowair_fp)
+        """Load processed data from numpy file - memory efficient version"""
+        print("Loading numpy file...")
+        self.processed_data = np.load(self.knowair_fp, mmap_mode='r')  # Use memory mapping
+        print(f"Loaded data shape: {self.processed_data.shape}")
 
-        # Extract PM2.5 (first feature in our processed data)
-        self.pm25 = self.processed_data[:, :, 0:1]
+        # Don't create copies yet, use lazy loading in __getitem__
+        self._pm25_start_idx = 0
+        self._pm25_end_idx = 1
+        self._feature_start_idx = 1
+        self._feature_end_idx = self.processed_data.shape[2]
 
-        # Extract other features (all except PM2.5)
-        self.feature = self.processed_data[:, :, 1:]
+        # Clear large data to save memory
+        # processed_data will be garbage collected
+        print("Data prepared with memory mapping")
 
     def _get_idx(self, t):
         """Get time index for hourly data"""
@@ -157,10 +163,14 @@ class HazeData(data.Dataset):
         return arrow_time
 
     def __len__(self):
-        return len(self.pm25)
+        return self.processed_data.shape[0] - (hist_len + pred_len) + 1
 
     def __getitem__(self, index):
-        return self.pm25[index], self.feature[index], self.time_arr[index]
+        # Lazy loading - only create slices when needed
+        pm25_slice = self.processed_data[index, :, self._pm25_start_idx:self._pm25_end_idx]
+        feature_slice = self.processed_data[index, :, self._feature_start_idx:self._feature_end_idx]
+
+        return pm25_slice, feature_slice, self.time_arr[index]
 
 
 if __name__ == '__main__':

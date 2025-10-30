@@ -13,10 +13,10 @@ experiments:
 #  model: nodesFC_GRU
 
 train:
-  batch_size: 32
+  batch_size: 2
   epochs: 50
-  exp_repeat: 10
-  hist_len: 24  # Use 24 hours of historical data
+  exp_repeat: 3
+  hist_len: 6  # Use 6 hours of historical data to reduce memory usage
   pred_len: 48  # Predict 48 hours into the future
   weight_decay: 0.0005
   early_stop: 10

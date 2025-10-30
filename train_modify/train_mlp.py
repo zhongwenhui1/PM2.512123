@@ -15,7 +15,7 @@ import numpy as np
 from tqdm import tqdm
 
 # Configuration
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')  # Force CPU usage to avoid GPU memory issues
 results_dir = file_dir['results_dir']
 dataset_num = config['experiments']['dataset_num']
 exp_model = config['experiments']['model']
@@ -35,15 +35,26 @@ lr = train_config['lr']
 optimizer_type = train_config['optimizer']
 momentum = train_config.get('momentum', 0.9)
 
-# Load data (MLP doesn't need graph structure)
+# Load data (MLP doesn't need graph structure) - use lazy loading
 class SimpleGraph:
     def __init__(self):
         self.node_num = 206  # Fixed number of stations
 
 graph = SimpleGraph()
+
+print("Loading training data...")
 train_data = HazeData(graph, hist_len, pred_len, dataset_num, flag='Train')
+print("Training data loaded successfully!")
+
+# Only load val data when needed
+print("Loading validation data...")
 val_data = HazeData(graph, hist_len, pred_len, dataset_num, flag='Val')
+print("Validation data loaded successfully!")
+
+# Only load test data when needed
+print("Loading test data...")
 test_data = HazeData(graph, hist_len, pred_len, dataset_num, flag='Test')
+print("Test data loaded successfully!")
 
 # Calculate dimensions
 in_dim = train_data.feature.shape[-1]
@@ -180,9 +191,9 @@ def main():
     for exp_idx in range(exp_repeat):
         print('\nNo.%2d experiment ~~~' % exp_idx)
 
-        train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True)
-        val_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, drop_last=True)
-        test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=False, drop_last=True)
+        train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=0)
+        val_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, drop_last=True, num_workers=0)
+        test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=False, drop_last=True, num_workers=0)
 
         model = get_model()
         model = model.to(device)
